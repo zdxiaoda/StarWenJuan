@@ -1,117 +1,92 @@
-# 🌟 问卷星自动填写系统
+# StarWenJuan自动填写系统
 
-> 同学们，给个免费的 Star 行吗？✨  
-> 求Star不给也没办法，毕竟我拿你们没办法.jpg
+基于 **Playwright** 和 **OpenAI** 实现的智能问卷自动填写工具。
 
-![run](./assets/run.gif)
+## 功能特性
 
-## 🧾 项目简介  
+- 🤖 **AI 智能回答**：基于 AI 生成的人设智能回答问卷问题
+- 🌐 **多窗口并发**：支持多个浏览器窗口同时运行，提升填写效率
+- 📊 **智能人设生成**：每次填写生成不同的人设，模拟真实用户行为
+- 🔄 **自动提交**：自动处理验证码和提交流程
 
-本项目名叫《问卷数据模拟系统》，基于 **Selenium** 实现自动化填写问卷功能。  
-虽然代码可能有点乱，但人和代码有一个能跑就行对吧？
+## 安装要求
 
-- ✅ **IP 切换**：通过代理服务器实现多 IP 填写，防止被封；
-- ✅ **选项比例定制**：每道题目可自定义选择比例，假装自己是个真实用户；
-- ✅ **多窗口并发**：支持多个浏览器窗口同时运行，填得快点不至于太无聊。
-
-## 🛠️ 功能特色  
-
-| 功能 | 描述 |
-|------|------|
-| 🌐 IP 切换 | 支持使用代理服务器切换 IP 地址，避免频繁提交导致 IP 被限制 |
-| 📊 题目选项比例设置 | 每个问题可设定各选项的随机分布比例，假装你是个人类 |
-| 🖼️ 多窗口并发 | 多线程打开多个浏览器窗口并行填写问卷，提升效率（也提升电脑风扇转速） |
-
-## 🚀 使用方法  
-
-### 1. 克隆项目到本地  
+### 1. 环境依赖
 
 ```bash
-git clone https://github.com/Zemelee/wjx.git   
+uv sync
 ```
 
-
-### 2. 安装依赖库  
-
-如果你是通过 `git clone` 下载的项目，请执行：
+### 2. 安装 Playwright
 
 ```bash
-pip3 install -r requirements.txt
+uv run playwright install chromium
 ```
 
-如果直接复制代码，确保本地已安装以下库：
+### 3. 配置 OpenAI
 
-- requests
-- numpy
-- selenium
+在 `config/` 目录下创建配置文件，包含以下内容：
 
-⚠️ 若运行报错，可能是库版本不兼容。  
-建议尝试不同版本重新运行，或者去 CSDN 搜一搜，说不定有人比你早踩坑。
+```json
+{
+  "openai": {
+    "base_url": "你的API地址",
+    "api_key": "你的API密钥",
+    "model": "使用的模型名称",
+    "timeout": 30,
+    "max_tokens_test": 10
+  },
+  "generation_params": {
+    "max_retries": 3,
+    "retry_delay": 1,
+    "persona_temperature": 0.8,
+    "answer_temperature": 0.3
+  },
+  "submission_params": {
+    "submit_button_delay": 1,
+    "verification_delay": 2,
+    "completion_wait_timeout": 10
+  }
+}
+```
 
-### 3. 安装 ChromeDriver  
+## 使用方法
 
-把 `chromedriver.exe` 放入 Python 的安装目录中；
-
-Chrome中输入 `chrome://version` 查看浏览器版本号；
-
-📌 根据你的 Chrome 浏览器版本下载对应的驱动程序：
-
-🔗 [点击下载 ChromeDriver](https://googlechromelabs.github.io/chrome-for-testing/)   
-
-
-### 4. 运行脚本  
-
-执行主文件开始填写问卷：
+### 1. 运行程序
 
 ```bash
-python wjx2.py
+uv run StarWenJuan.py
 ```
 
-## ⚙️ 配置文件说明  
+### 2. 输入参数
 
-🔧 配置文件持续更新中...  
-（意思是有些地方你自己看着改吧，注释应该够用了）
+- **问卷链接**：完整的StarWenJuan链接
+- **目标份数**：需要填写的问卷数量
+- **窗口数量**：并发运行的浏览器窗口数（建议 1-3 个）
 
-你可以根据需要修改题目选项的比例、代理地址等参数，详细配置请参考项目中的注释说明。
+## 支持题型
 
-不想看代码？那你也可以试试这个网站：
-🔗 [糖黑代刷网 - 注册送额度](http://sugarblack.top)  
-图形界面操作，适合不想折腾的朋友。
+- 单选题 (type=3)
+- 多选题 (type=4)
+- 填空题 (type=1,2)
+- 量表题 (type=5)
+- 矩阵题 (type=6)
+- 下拉框 (type=7)
+- 数字题 (type=8)
+- 数字矩阵 (type=10)
+- 排序题 (type=11)
 
-![teach](./assets/bilibili.png "看我看我！！！！")
+## 注意事项
 
-## 💬 加入交流群  
+1. 确保网络连接稳定
+2. 合理设置窗口数量，避免 API 频率限制
+3. 遵守问卷平台的使用条款
+4. 仅用于学习和研究目的
 
-有问题欢迎加入我们的 QQ 群进行交流👇
+## 许可证
 
-👥 QQ 交流群（越往前可能越满）：
+本项目仅供学习和研究使用，请勿用于商业用途。
 
-| 序号 | 群号         |
-|------|--------------|
-| 群4    | 931614446    |
-| 群3    | 850281779    |
-| 群2    | 427847187    |
-| 群1    | 774326264    |
+## 贡献
 
-💡 注：群里热心网友会帮助你（如果他们知道的话）。  
-当然，提问前请先看看群公告，别问“怎么安装”这种基础问题，除非你真的不会。
-
-## ❤️ 最后的话  
-
-如果你觉得这个项目对你有帮助，请不要吝啬你的 **Star**！  
-我写代码~~不是为了钱~~，就是为了虚荣心和成就感！
-
-![star](./assets/star.gif)
-
-
-油猴的问卷星脚本：[脚本猫地址](https://scriptcat.org/zh-CN/script-show-page/2833) / [油叉网地址](https://greasyfork.org/zh-CN/scripts/466722-%E9%97%AE%E5%8D%B7%E6%98%9F%E8%84%9A%E6%9C%AC)
-
-油猴的问卷网脚本：[ScriptCat链接](https://scriptcat.org/zh-CN/script-show-page/3471) / [油叉网地址](https://greasyfork.org/zh-CN/scripts/536949-q11e-wjw)
-
-公众号：做实验的研究牲
-
-🎉 **感谢使用，祝你问卷轻松过百份，老板看了都感动！**
-
-最后的最后，不想看代码？那你也可以试试这个网站：
-🔗 [速填通 - 注册送额度](http://sugarblack.top)  
-图形界面操作，适合不想折腾的朋友。
+欢迎提交 Issue 和 Pull Request 来改进项目。
