@@ -8,6 +8,7 @@ import time
 from typing import List
 import json
 import os
+import requests
 
 from playwright.sync_api import sync_playwright, Page, Browser
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -20,6 +21,9 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+# 代理配置（将从配置文件加载）
+proxy_config = None
 
 
 def scan_config_files():
@@ -90,6 +94,19 @@ openai_config = config["openai"]
 generation_params = config["generation_params"]
 submission_params = config["submission_params"]
 
+# 加载代理配置
+proxy_config = config.get(
+    "proxy_config",
+    {
+        "enabled": False,
+        "clash_control_url": "",
+        "clash_secret": "",
+        "clash_proxy_url": "",
+        "switch_delay": 3,
+        "auto_switch": True,
+    },
+)
+
 logger.info("StarWenJuan自动填写工具")
 logger.info("每次填写前会生成不同的人设，然后基于人设来回答问题")
 logger.info(f"使用模型: {openai_config['model']}")
@@ -100,6 +117,117 @@ client = openai.OpenAI(
     base_url=openai_config["base_url"], api_key=openai_config["api_key"]
 )
 current_persona = None
+
+
+def get_clash_proxies():
+    """获取Clash中的所有代理节点"""
+    if not proxy_config.get("enabled", False):
+        logger.warning("代理功能未启用")
+        return []
+
+    try:
+        headers = {"Authorization": f"Bearer {proxy_config['clash_secret']}"}
+        response = requests.get(
+            f"{proxy_config['clash_control_url']}/proxies", headers=headers, timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            proxies = []
+
+            # 遍历所有代理组
+            for group_name, group_data in data.get("proxies", {}).items():
+                if group_data.get("type") == "Selector":
+                    # 获取代理组中的所有节点
+                    for proxy_name in group_data.get("all", []):
+                        if proxy_name in data.get("proxies", {}):
+                            proxy_info = data["proxies"][proxy_name]
+                            if proxy_info.get("type") in [
+                                "Shadowsocks",
+                                "Vmess",
+                                "Trojan",
+                                "Socks5",
+                                "Http",
+                            ]:
+                                proxies.append(
+                                    {
+                                        "name": proxy_name,
+                                        "group": group_name,
+                                        "type": proxy_info.get("type", "Unknown"),
+                                    }
+                                )
+
+            logger.info(f"获取到 {len(proxies)} 个可用代理节点")
+            return proxies
+        else:
+            logger.error(f"获取代理列表失败: {response.status_code}")
+            return []
+    except Exception as e:
+        logger.error(f"获取代理列表异常: {e}")
+        return []
+
+
+def switch_clash_proxy(proxy_name, group_name):
+    """切换Clash代理节点"""
+    if not proxy_config.get("enabled", False):
+        logger.warning("代理功能未启用")
+        return False
+
+    try:
+        headers = {"Authorization": f"Bearer {proxy_config['clash_secret']}"}
+        data = {"name": proxy_name}
+        response = requests.put(
+            f"{proxy_config['clash_control_url']}/proxies/{group_name}",
+            headers=headers,
+            json=data,
+            timeout=5,
+        )
+
+        if response.status_code == 204:
+            logger.info(f"成功切换到代理节点: {proxy_name}")
+            return True
+        else:
+            logger.error(f"切换代理失败: {response.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"切换代理异常: {e}")
+        return False
+
+
+def switch_to_random_proxy():
+    """随机切换到一个代理节点"""
+    proxies = get_clash_proxies()
+    if not proxies:
+        logger.warning("没有可用的代理节点")
+        return False
+
+    # 随机选择一个代理
+    selected_proxy = random.choice(proxies)
+    return switch_clash_proxy(selected_proxy["name"], selected_proxy["group"])
+
+
+def test_clash_connection():
+    """测试Clash连接"""
+    if not proxy_config.get("enabled", False):
+        logger.info("代理功能未启用，跳过连接测试")
+        return True
+
+    try:
+        headers = {"Authorization": f"Bearer {proxy_config['clash_secret']}"}
+        response = requests.get(
+            f"{proxy_config['clash_control_url']}/version", headers=headers, timeout=5
+        )
+        if response.status_code == 200:
+            version_info = response.json()
+            logger.info(
+                f"Clash连接成功，版本: {version_info.get('version', 'Unknown')}"
+            )
+            return True
+        else:
+            logger.error(f"Clash连接失败: {response.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"Clash连接异常: {e}")
+        return False
 
 
 def clean_response(response_text):
@@ -640,10 +768,36 @@ def run(xx, yy):
         browser = p.chromium.launch(**launch_options)
 
         while cur_num < target_num:
-            context = browser.new_context(
-                viewport={"width": 550, "height": 650},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            )
+            # 每次填写前切换代理节点
+            if proxy_config.get("enabled", False) and proxy_config.get(
+                "auto_switch", True
+            ):
+                if switch_to_random_proxy():
+                    switch_delay = proxy_config.get("switch_delay", 3)
+                    logger.info(f"已切换代理节点，等待{switch_delay}秒让代理生效...")
+                    time.sleep(switch_delay)
+                else:
+                    logger.warning("代理切换失败，继续使用当前代理")
+
+            # 配置浏览器代理
+            context_options = {
+                "viewport": {"width": 550, "height": 650},
+                "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0",
+            }
+
+            # 如果代理功能启用，添加代理配置
+            if proxy_config.get("enabled", False):
+                proxy_url = proxy_config.get("clash_proxy_url", "http://127.0.0.1:7897")
+                if proxy_url.startswith("http://"):
+                    proxy_server = proxy_url.replace("http://", "")
+                    context_options["proxy"] = {
+                        "server": proxy_server,
+                        "username": "",
+                        "password": "",
+                    }
+                    logger.info(f"使用代理: {proxy_server}")
+
+            context = browser.new_context(**context_options)
 
             page = context.new_page()
 
@@ -667,6 +821,16 @@ def run(xx, yy):
                         f"已填写{cur_num}份 - 失败{cur_fail}次 - {time.strftime('%H:%M:%S', time.localtime(time.time()))} "
                     )
                     logger.info(f"完成页面: {final_url}")
+
+                    # 问卷填写完成后切换代理节点
+                    if proxy_config.get("enabled", False) and proxy_config.get(
+                        "auto_switch", True
+                    ):
+                        logger.info("问卷填写完成，准备切换代理节点...")
+                        if switch_to_random_proxy():
+                            logger.info("代理节点切换成功")
+                        else:
+                            logger.warning("代理节点切换失败")
                 else:
                     logger.warning("提交可能失败或超时")
 
@@ -694,7 +858,30 @@ if __name__ == "__main__":
     logger.info("=== StarWenJuan自动填写工具 ===")
     logger.info(f"使用模型: {openai_config['model']}")
     logger.info(f"API地址: {openai_config['base_url']}")
+
+    # 显示代理配置信息
+    if proxy_config.get("enabled", False):
+        logger.info(f"代理功能: 已启用")
+        logger.info(f"Clash控制地址: {proxy_config['clash_control_url']}")
+        logger.info(f"Clash代理地址: {proxy_config['clash_proxy_url']}")
+        logger.info(
+            f"自动切换: {'是' if proxy_config.get('auto_switch', True) else '否'}"
+        )
+    else:
+        logger.info("代理功能: 未启用")
+
     logger.info("请按照提示输入相关信息：")
+
+    # 测试Clash连接
+    if proxy_config.get("enabled", False):
+        logger.info("正在测试Clash连接...")
+        if not test_clash_connection():
+            logger.error("Clash连接失败！请确保：")
+            logger.error(f"1. Clash已启动并运行在 {proxy_config['clash_control_url']}")
+            logger.error("2. 控制密钥配置正确")
+            logger.error("3. 外部控制功能已启用")
+            logger.error("4. 或设置 proxy_config.enabled = false 禁用代理功能")
+            exit()
 
     try:
         logger.info("正在测试API连接...")
@@ -749,6 +936,8 @@ if __name__ == "__main__":
     logger.info(f"窗口数量: {num_threads}")
     logger.info("开始运行程序...")
     logger.info("每次填写都会生成不同的人设...")
+    if proxy_config.get("enabled", False) and proxy_config.get("auto_switch", True):
+        logger.info("每次填写完成后会自动切换代理节点...")
 
     fail_threshold = target_num / 4 + 1
     cur_num = 0
